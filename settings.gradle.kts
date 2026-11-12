@@ -13,4 +13,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "pokerbaby"
 
-include("poker-engine-core", "poker-engine-json", "poker-engine-demo")
+include("poker-engine-core", "poker-engine-json", "poker-engine-demo", "poker-engine-web")
