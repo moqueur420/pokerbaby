@@ -9,7 +9,6 @@ import java.util.OptionalInt;
 import java.util.Set;
 
 import io.pokerbaby.engine.IllegalActionException.Code;
-import io.pokerbaby.engine.LegalActions.BetRange;
 
 /** Pure heads-up no-limit hold'em operations; randomness and metadata are caller-owned. */
 public final class HandEngine {
@@ -56,23 +55,33 @@ public final class HandEngine {
             return LegalActions.none();
         }
         int seat = state.actingSeat().orElseThrow();
-        int opponent = 1 - seat;
-        long ownBet = state.streetBets().get(seat);
-        long otherBet = state.streetBets().get(opponent);
-        long stack = state.stacks().get(seat);
-        long call = Math.min(stack, Math.max(0, Math.subtractExact(otherBet, ownBet)));
-        long maxTo = Math.addExact(ownBet, stack);
-        Optional<BetRange> bet = Optional.empty();
-        Optional<BetRange> raise = Optional.empty();
-        if (state.stacks().get(opponent) > 0) {
-            if (otherBet == 0 && ownBet == 0) {
-                bet = Optional.of(new BetRange(Math.min(state.config().bigBlind(), maxTo), maxTo));
-            } else if (maxTo > otherBet) {
-                long minTo = Math.min(maxTo, Math.addExact(otherBet, state.lastRaiseIncrement()));
-                raise = Optional.of(new BetRange(minTo, maxTo));
-            }
+        return BettingRules.legal(state.config(), state.stacks(), state.streetBets(), state.lastRaiseIncrement(), seat);
+    }
+
+    /**
+     * Restores a validated decision snapshot using an explicitly supplied remaining deck.
+     * Both players' hole cards must be known. The history prefix is replayed to reject
+     * forged betting context and intermediate automatic-transition snapshots.
+     * @param snapshot a non-null decision snapshot with its history prefix
+     * @param remainingDeck undrawn cards, disjoint from all dealt cards
+     * @return a full state ready for {@link #apply}
+     * @throws IllegalArgumentException if the snapshot or deck cannot be resumed
+     */
+    public static HandState resume(HandSnapshot snapshot, Deck remainingDeck) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(remainingDeck, "remainingDeck");
+        if (!snapshot.decisionPoint() || snapshot.isComplete()
+                || snapshot.holeCards().stream().anyMatch(cards -> cards.size() != 2)) {
+            throw new IllegalArgumentException("Resume requires a decision and both known hands");
         }
-        return new LegalActions(call > 0, call == 0, call, bet, raise);
+        HandSnapshot verified = HandReplayer.replay(snapshot.history()).lastSnapshot();
+        if (!verified.equals(snapshot)) {
+            throw new IllegalArgumentException("Snapshot disagrees with its history prefix");
+        }
+        remainingDeck.requireRemaining(5 - snapshot.board().size());
+        return new HandState(snapshot.street(), snapshot.board(), snapshot.holeCards(), snapshot.stacks(),
+                snapshot.streetBets(), snapshot.contributions(), snapshot.actingSeat(), snapshot.lastRaiseIncrement(),
+                snapshot.actedSeats(), remainingDeck, snapshot.history(), Optional.empty());
     }
 
     /**
@@ -96,7 +105,7 @@ public final class HandEngine {
             throw rejected(Code.NOT_YOUR_TURN, "The other player must act");
         }
         LegalActions legal = legalActions(state);
-        validate(action, legal);
+        BettingRules.validate(action, legal);
         Transition next = new Transition(state);
         next.events.add(new HandEvent.ActionTaken(seat, action));
         next.actedSeats.add(seat);
@@ -118,29 +127,6 @@ public final class HandEngine {
             next.advance();
         }
         return next.state();
-    }
-
-    private static void validate(Action action, LegalActions legal) {
-        boolean available = switch (action.type()) {
-            case FOLD -> legal.canFold();
-            case CHECK -> legal.canCheck();
-            case CALL -> legal.canCall();
-            case BET -> legal.canBet();
-            case RAISE -> legal.canRaise();
-        };
-        if (!available) {
-            throw rejected(Code.ACTION_UNAVAILABLE, "Unavailable action: " + action.type());
-        }
-        if (action.to().isPresent()) {
-            BetRange range = (action.type() == ActionType.BET ? legal.bet() : legal.raise()).orElseThrow();
-            long to = action.to().orElseThrow();
-            if (to < range.minTo()) {
-                throw rejected(Code.BELOW_MINIMUM, "Wager must be at least " + range.minTo());
-            }
-            if (to > range.maxTo()) {
-                throw rejected(Code.ABOVE_MAXIMUM, "Wager must be at most " + range.maxTo());
-            }
-        }
     }
 
     private static IllegalActionException rejected(Code code, String message) {
@@ -215,7 +201,7 @@ public final class HandEngine {
         private void advance() {
             if (stacks.get(0) == 0 || stacks.get(1) == 0) {
                 int live = stacks.get(0) == 0 ? 1 : 0;
-                if (stacks.get(live) == 0 || streetBets.get(live) >= streetBets.get(1 - live)) {
+                if (BettingRules.runout(stacks, streetBets)) {
                     returnUncalled();
                     while (board.size() < 5) {
                         dealNextStreet();
@@ -224,7 +210,7 @@ public final class HandEngine {
                 } else {
                     actor = live;
                 }
-            } else if (actedSeats.size() == 2 && streetBets.get(0) == streetBets.get(1)) {
+            } else if (BettingRules.roundClosed(streetBets, actedSeats)) {
                 if (street == Street.RIVER) {
                     showdown();
                 } else {
@@ -234,12 +220,7 @@ public final class HandEngine {
         }
 
         private void dealNextStreet() {
-            street = switch (street) {
-                case PREFLOP -> Street.FLOP;
-                case FLOP -> Street.TURN;
-                case TURN -> Street.RIVER;
-                default -> throw new IllegalStateException("Cannot deal after " + street);
-            };
+            street = BettingRules.nextStreet(street);
             int count = street == Street.FLOP ? 3 : 1;
             List<Card> dealt = new ArrayList<>(count);
             for (int index = 0; index < count; index++) {

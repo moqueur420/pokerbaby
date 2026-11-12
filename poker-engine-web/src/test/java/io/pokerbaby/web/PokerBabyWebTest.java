@@ -89,6 +89,27 @@ class PokerBabyWebTest {
         assertEquals(415, client.send(wrongType, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
 
+    @Test
+    void replayAndResumeWorkThroughTheHttpApi() throws Exception {
+        get("/api/state");
+        assertEquals(200, post("/api/action", "version=0&type=FOLD").statusCode());
+        assertEquals(200, post("/api/next", "version=1").statusCode());
+        HttpResponse<String> replay = get("/api/replay?hand=1");
+        assertEquals(200, replay.statusCode());
+        assertTrue(replay.body().contains("\"canResume\":true"));
+        assertFalse(replay.body().contains("\"cards\":[\"4d\",\"Th\"]"));
+        assertEquals(409, post("/api/resume", "version=2&hand=1&step=0").statusCode());
+        HttpResponse<String> resumed = post("/api/resume", "version=2&hand=1&step=4");
+        assertEquals(200, resumed.statusCode());
+        assertTrue(resumed.body().contains("\"handNumber\":1"));
+        assertTrue(resumed.body().contains("\"complete\":false"));
+        assertEquals(409, post("/api/resume", "version=2&hand=1&step=4").statusCode());
+        assertEquals(405, get("/api/resume").statusCode());
+        assertEquals(405, post("/api/replay?hand=1", "").statusCode());
+        assertEquals(400, get("/api/replay?hand=x").statusCode());
+        assertEquals(409, get("/api/replay?hand=999").statusCode());
+    }
+
     private URI uri(String path) {
         return URI.create("http://127.0.0.1:" + app.port() + path);
     }

@@ -940,6 +940,103 @@ input[type=range] {
     line-height:1
 }
 
+.history-tools {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:8px;
+    margin:0 20px 12px
+}
+
+.history-tools label {
+    grid-column:1 / -1;
+    color:var(--muted);
+    font-size:11px
+}
+
+.history-tools select {
+    min-width:0;
+    padding:9px 7px;
+    color:var(--text);
+    background:#1b2921;
+    border:1px solid #425747;
+    border-radius:6px;
+    font:inherit;
+    font-size:11px
+}
+
+.history-tools button {
+    padding:9px 10px;
+    font-size:11px
+}
+
+.replay-controls {
+    padding:16px;
+    background:#122019;
+    border:1px solid #405643;
+    border-radius:8px
+}
+
+.replay-heading,.replay-caption,.replay-continue {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px
+}
+
+.replay-heading strong {
+    font-size:16px;
+    font-weight:500
+}
+
+.replay-timeline {
+    display:grid;
+    grid-template-columns:36px minmax(0,1fr) 36px;
+    gap:14px;
+    align-items:center;
+    margin:18px 0 12px
+}
+
+.replay-timeline input {
+    margin:0
+}
+
+.replay-arrow {
+    height:36px;
+    border:1px solid #4b6551;
+    border-radius:6px;
+    background:#263a2c;
+    font-size:18px
+}
+
+.replay-arrow:enabled:hover {
+    background:#3b5141
+}
+
+.replay-caption {
+    align-items:start;
+    font-size:12px;
+    color:#cbdcc5
+}
+
+#replay-progress {
+    flex-shrink:0;
+    color:var(--muted);
+    font-variant-numeric:tabular-nums
+}
+
+.replay-continue {
+    margin-top:18px;
+    padding-top:14px;
+    border-top:1px solid #344837
+}
+
+.replay-continue p {
+    margin:0;
+    color:var(--muted);
+    font-size:11px;
+    max-width:330px
+}
+
 .history-tabs {
     margin:0 20px;
     padding:8px 0 15px;
@@ -1296,6 +1393,30 @@ dialog dd {
 }
 
 @media(max-width:570px) {
+    .replay-controls {
+        padding:13px
+    }
+    .replay-heading {
+        gap:10px;
+        align-items:start
+    }
+    .replay-heading strong {
+        font-size:14px
+    }
+    .replay-heading button {
+        padding:7px 9px;
+        font-size:10px
+    }
+    .replay-continue {
+        flex-direction:column;
+        align-items:stretch
+    }
+    .replay-caption {
+        font-size:11px
+    }
+    .replay-timeline {
+        gap:10px
+    }
     .workspace {
         padding:24px 12px 18px
     }

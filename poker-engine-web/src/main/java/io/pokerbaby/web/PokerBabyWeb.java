@@ -74,8 +74,8 @@ public final class PokerBabyWeb implements AutoCloseable {
     }
 
     private void api(HttpExchange exchange, String path) throws IOException {
-        boolean reading = path.equals("/api/state");
-        if (!reading && !Arrays.asList("/api/new", "/api/next", "/api/action").contains(path)) {
+        boolean reading = path.equals("/api/state") || path.equals("/api/replay");
+        if (!reading && !Arrays.asList("/api/new", "/api/next", "/api/action", "/api/resume").contains(path)) {
             json(exchange, 404, Map.of("error", "Такой команды нет."));
             return;
         }
@@ -104,7 +104,12 @@ public final class PokerBabyWeb implements AutoCloseable {
             fields = form(new String(body, StandardCharsets.UTF_8));
         }
         GameSession session = session(exchange);
-        json(exchange, 200, reading ? session.state() : session.command(path.substring(5), fields));
+        if (path.equals("/api/replay")) {
+            Map<String, String> query = form(java.util.Objects.requireNonNullElse(exchange.getRequestURI().getRawQuery(), ""));
+            json(exchange, 200, session.replay(Long.parseLong(query.getOrDefault("hand", ""))));
+        } else {
+            json(exchange, 200, reading ? session.state() : session.command(path.substring(5), fields));
+        }
     }
 
     private GameSession session(HttpExchange exchange) {

@@ -6,10 +6,14 @@ import io.pokerbaby.engine.Deck;
 import io.pokerbaby.engine.GameConfig;
 import io.pokerbaby.engine.HandEngine;
 import io.pokerbaby.engine.HandEvent;
+import io.pokerbaby.engine.HandReplayer;
+import io.pokerbaby.engine.HandSnapshot;
 import io.pokerbaby.engine.HandState;
 import io.pokerbaby.engine.LegalActions;
 import io.pokerbaby.engine.MatchState;
 import io.pokerbaby.engine.PlayerView;
+import io.pokerbaby.engine.ReplayResult;
+import io.pokerbaby.engine.ReplayStep;
 import io.pokerbaby.engine.SeatChips;
 
 import java.util.LinkedHashMap;
@@ -24,6 +28,9 @@ final class GameSession {
     private final RandomGenerator bot;
     private MatchState match;
     private HandState hand;
+    private MatchState matchAtStart;
+    private Deck originalDeck;
+    private final Map<Long, SavedHand> savedHands = new LinkedHashMap<>();
     private long handNumber;
     private long version;
 
@@ -56,17 +63,57 @@ final class GameSession {
         state.put("bigBlind", view.config().bigBlind());
         state.put("complete", view.isComplete());
         state.put("matchOver", match.isOver());
+        state.put("hands", savedHands.entrySet().stream().map(entry -> Map.of(
+                "handNumber", entry.getKey(), "complete", entry.getValue().hand().isComplete())).toList());
         state.put("legal", Map.of("fold", legal.canFold(), "check", legal.canCheck(),
                 "callAmount", legal.callAmount(), "bet", range(legal.bet().orElse(null)),
                 "raise", range(legal.raise().orElse(null))));
         state.put("history", view.history().events().stream().map(GameSession::event).toList());
-        state.put("result", view.result().map(result -> Map.<String, Object>of(
-                "winnerSeat", result.winnerSeat().orElse(-1),
-                "pot", result.pot(), "showdown", result.wasShowdown(),
-                "categories", result.ranks().stream().map(rank -> rank.category().name()).toList(),
-                "net", view.stacks().get(0) - view.history().header().startingStacks().get(0)))
-                .orElse(null));
+        state.put("result", stateResult(view));
         return state;
+    }
+
+    synchronized Map<String, Object> replay(long number) {
+        SavedHand saved = savedHand(number);
+        ReplayResult replay = HandReplayer.replay(saved.hand().history());
+        return Map.of("version", version, "handNumber", number, "outcomeVerified", replay.outcomeVerified(),
+                "steps", replay.steps().stream().map(step -> replayStep(saved, number, step)).toList());
+    }
+
+    private Map<String, Object> replayStep(SavedHand saved, long number, ReplayStep step) {
+        // Redact each historical prefix independently; never backfill future reveals.
+        HandSnapshot snapshot = step.snapshot().forPlayer(0);
+        Map<String, Object> view = new LinkedHashMap<>();
+        view.put("handNumber", number);
+        view.put("street", snapshot.street().name());
+        view.put("buttonSeat", snapshot.history().header().buttonSeat());
+        view.put("board", cards(snapshot.board()));
+        view.put("holeCards", cards(snapshot.holeCards().get(0)));
+        view.put("opponentCards", cards(snapshot.holeCards().get(1)));
+        view.put("stacks", snapshot.stacks().values());
+        view.put("streetBets", snapshot.streetBets().values());
+        view.put("pot", snapshot.pot());
+        view.put("smallBlind", snapshot.history().header().config().smallBlind());
+        view.put("bigBlind", snapshot.history().header().config().bigBlind());
+        view.put("complete", snapshot.isComplete());
+        view.put("actingSeat", snapshot.actingSeat().orElse(-1));
+        view.put("decisionPoint", snapshot.decisionPoint());
+        view.put("legal", Map.of("fold", false, "check", false, "callAmount", 0, "bet", Map.of(), "raise", Map.of()));
+        view.put("history", snapshot.history().events().stream().map(GameSession::event).toList());
+        view.put("result", snapshot.isComplete() ? stateResult(saved.hand().viewFor(0)) : null);
+        Map<String, Object> fact = step.event().map(item -> item instanceof HandEvent.DealHole hole && hole.seat() == 1
+                ? Map.<String, Object>of("type", "deal_hidden", "seat", 1) : event(item)).orElse(Map.of());
+        return Map.of("number", step.eventNumber(), "event", fact, "state", view,
+                "canResume", snapshot.decisionPoint() && snapshot.actingSeat().orElse(-1) == 0
+                        && step.snapshot().holeCards().stream().allMatch(handCards -> handCards.size() == 2));
+    }
+
+    private static Object stateResult(PlayerView view) {
+        return view.result().map(result -> Map.<String, Object>of(
+                "winnerSeat", result.winnerSeat().orElse(-1), "pot", result.pot(),
+                "showdown", result.wasShowdown(),
+                "categories", result.ranks().stream().map(rank -> rank.category().name()).toList(),
+                "net", view.stacks().get(0) - view.history().header().startingStacks().get(0))).orElse(null);
     }
 
     synchronized Map<String, Object> command(String command, Map<String, String> fields) {
@@ -102,13 +149,56 @@ final class GameSession {
                 hand = HandEngine.apply(hand, 0, action);
                 playBot();
             }
+            case "resume" -> resume(fields);
             default -> throw new IllegalArgumentException("Неизвестная команда.");
         }
         version++;
+        remember();
         return state();
     }
 
+    private void resume(Map<String, String> fields) {
+        long number = Long.parseLong(fields.getOrDefault("hand", ""));
+        int index = Integer.parseInt(fields.getOrDefault("step", ""));
+        SavedHand saved = savedHand(number);
+        ReplayResult replay = HandReplayer.replay(saved.hand().history());
+        if (index < 0 || index >= replay.steps().size()) {
+            throw new IllegalArgumentException("Такого шага нет.");
+        }
+        HandSnapshot snapshot = replay.steps().get(index).snapshot();
+        if (!snapshot.decisionPoint() || snapshot.actingSeat().orElse(-1) != 0) {
+            throw new IllegalStateException("Продолжить можно только с точки вашего решения.");
+        }
+        Deck remaining = saved.originalDeck();
+        for (int count = 0; count < 4 + snapshot.board().size(); count++) {
+            remaining = remaining.draw().deck();
+        }
+        HandState restored = HandEngine.resume(snapshot, remaining);
+        match = saved.matchAtStart();
+        matchAtStart = saved.matchAtStart();
+        originalDeck = saved.originalDeck();
+        handNumber = number;
+        hand = restored;
+        savedHands.keySet().removeIf(key -> key >= number);
+    }
+
+    private SavedHand savedHand(long number) {
+        SavedHand saved = savedHands.get(number);
+        if (saved == null) {
+            throw new IllegalStateException("Раздача больше не доступна. Обновите список.");
+        }
+        return saved;
+    }
+
+    private void remember() {
+        savedHands.put(handNumber, new SavedHand(matchAtStart, originalDeck, hand));
+        while (savedHands.size() > 20) {
+            savedHands.remove(savedHands.keySet().iterator().next());
+        }
+    }
+
     private void reset() {
+        savedHands.clear();
         match = MatchState.start(UUID.randomUUID().toString(), List.of("human", "bot"),
                 GameConfig.DEFAULT, SeatChips.of(10_000, 10_000), 0);
         startHand();
@@ -116,8 +206,11 @@ final class GameSession {
 
     private void startHand() {
         handNumber = match.handNumber();
-        hand = match.nextHand(Deck.shuffled(decks));
+        matchAtStart = match;
+        originalDeck = Deck.shuffled(decks);
+        hand = match.nextHand(originalDeck);
         playBot();
+        remember();
     }
 
     private void playBot() {
@@ -175,5 +268,8 @@ final class GameSession {
                     "cards", cards(shown.cards()), "category", shown.category().name());
             case HandEvent.Payout payout -> Map.of("type", payout.type(), "seat", payout.seat(), "amount", payout.amount());
         };
+    }
+
+    private record SavedHand(MatchState matchAtStart, Deck originalDeck, HandState hand) {
     }
 }

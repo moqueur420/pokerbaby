@@ -53,6 +53,12 @@
                 <div class="controls">
                     <div class="decision-heading"><span class="turn-indicator" id="turn-indicator"></span><strong id="status" role="status" aria-live="polite">Подключаемся…</strong><span class="decision-hint" id="decision-hint">Игра на условные фишки</span></div>
                     <p class="error-message" id="error" role="alert" hidden></p>
+                    <section class="replay-controls" id="replay-controls" aria-label="Просмотр раздачи" hidden>
+                        <div class="replay-heading"><strong id="replay-title">Просмотр раздачи</strong><button class="secondary-button" id="replay-exit" type="button">Вернуться к игре</button></div>
+                        <div class="replay-timeline"><button class="replay-arrow" id="replay-prev" type="button" aria-label="Предыдущее событие">←</button><input id="replay-slider" type="range" min="0" max="1" value="0" step="1" aria-label="Событие раздачи"><button class="replay-arrow" id="replay-next" type="button" aria-label="Следующее событие">→</button></div>
+                        <div class="replay-caption"><span id="replay-event" role="status" aria-live="polite">Начало раздачи</span><span id="replay-progress"></span></div>
+                        <div class="replay-continue"><p id="replay-hint">Выберите точку своего решения, чтобы сыграть иначе.</p><button class="primary-button" id="resume-button" type="button" disabled>Продолжить отсюда</button></div>
+                    </section>
                     <div class="action-controls" id="action-controls">
                         <div class="wager-controls">
                             <div class="wager-label">
@@ -71,6 +77,7 @@
 
             <aside class="history-panel" aria-labelledby="history-heading">
                 <div class="history-heading"><h2 id="history-heading">За столом</h2><span class="history-icon" aria-hidden="true">≡</span></div>
+                <div class="history-tools"><label for="hand-select">Последние 20 раздач</label><select id="hand-select" disabled aria-label="Выбрать раздачу для просмотра"></select><button class="secondary-button" id="replay-open" type="button" disabled>Смотреть</button></div>
                 <div class="history-tabs"><span>История раздачи</span><span class="history-count" id="history-count">0</span></div>
                 <ol class="history-list" id="history-list" aria-label="Ходы текущей раздачи"><li class="history-empty">Сейчас раздадим карты.</li></ol>
                 <div class="table-tip"><span class="tip-symbol" aria-hidden="true">♧</span><div><strong>Не спешите с решением</strong><p>Таймера нет. Посмотрите на карты, оцените банк и сделайте свой ход.</p></div></div>
@@ -81,5 +88,6 @@
 
     <dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">Добро пожаловать за стол</h2><button class="close-button" id="help-close" type="button" aria-label="Закрыть">×</button></div><p>Соберите лучшую комбинацию из пяти карт, используя две свои и пять общих. Или заберите банк, если соперник сбросит карты.</p><dl><dt>Чек / колл</dt><dd>Пропустить ход без ставки или уравнять ставку соперника.</dd><dt>Бет / рейз</dt><dd>Поставить или повысить. Размер «до» — вся ваша ставка на текущей улице, включая уже поставленные фишки.</dd><dt>Фолд</dt><dd>Сбросить карты и отдать банк сопернику.</dd></dl><p class="dialog-note">Стартовые стеки — по 10 000, блайнды — 50 / 100. Бот играет по простой стратегии. Матч заканчивается, когда у одного из игроков закончатся фишки. Состояние хранится до остановки сервера.</p></dialog>
     <dialog id="reset-dialog" aria-labelledby="reset-title"><h2 id="reset-title">Начать заново?</h2><p>Текущий матч закончится. У вас и бота снова будет по 10 000 фишек.</p><div class="dialog-actions"><button class="secondary-button" id="reset-cancel" type="button">Продолжить матч</button><button class="primary-button" id="reset-confirm" type="button">Новый матч</button></div></dialog>
+    <dialog id="resume-dialog" aria-labelledby="resume-title"><h2 id="resume-title">Сыграть с этого момента?</h2><p>Вы вернётесь к выбранному решению. Последующие события и более поздние раздачи будут заменены новым продолжением. Порядок оставшихся карт сохранится.</p><div class="dialog-actions"><button class="secondary-button" id="resume-cancel" type="button">Остаться в просмотре</button><button class="primary-button" id="resume-confirm" type="button">Продолжить игру</button></div></dialog>
 </body>
 </html>
