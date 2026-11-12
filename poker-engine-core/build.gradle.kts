@@ -6,6 +6,21 @@ plugins {
 
 description = "Deterministic heads-up poker engine with no runtime dependencies"
 
+val benchmark = sourceSets.create("benchmark") {
+    compileClasspath += sourceSets.main.get().output
+    runtimeClasspath += sourceSets.main.get().output
+}
+
+tasks.register<JavaExec>("benchmarkEvaluator") {
+    group = "verification"
+    description = "Runs an initial single-thread evaluator throughput measurement outside tests and coverage"
+    dependsOn(benchmark.classesTaskName)
+    classpath = benchmark.runtimeClasspath
+    mainClass.set("io.pokerbaby.benchmark.HandEvaluatorBenchmark")
+    javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
+    jvmArgs("-Xms512m", "-Xmx512m", "-XX:ActiveProcessorCount=1", "-XX:+UseSerialGC")
+}
+
 val productionClasses = sourceSets.main.get().output.classesDirs.asFileTree.matching {
     include("**/*.class")
     exclude("**/package-info.class")

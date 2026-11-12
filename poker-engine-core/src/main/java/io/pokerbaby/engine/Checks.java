@@ -37,4 +37,25 @@ final class Checks {
         }
         return copy;
     }
+
+    static List<List<Card>> holeCards(List<List<Card>> hands) {
+        if (hands.size() != 2) {
+            throw new IllegalArgumentException("Exactly two hands are required");
+        }
+        return List.of(cards(hands.get(0), 2), cards(hands.get(1), 2));
+    }
+
+    @SafeVarargs
+    static void disjointCards(List<Card>... groups) {
+        long seen = 0;
+        for (List<Card> group : groups) {
+            for (Card card : group) {
+                long bit = 1L << (card.rank().ordinal() * 4 + card.suit().ordinal());
+                if ((seen & bit) != 0) {
+                    throw new IllegalArgumentException("Repeated dealt or remaining card: " + card);
+                }
+                seen |= bit;
+            }
+        }
+    }
 }

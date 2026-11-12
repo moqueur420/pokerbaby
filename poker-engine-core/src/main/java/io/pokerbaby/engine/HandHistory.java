@@ -49,6 +49,19 @@ public record HandHistory(Header header, List<HandEvent> events) {
     }
 
     /**
+     * Removes the opponent's private deal event. Public showdown events remain,
+     * so cards become visible only when the history explicitly reveals them.
+     * @param seat viewer's seat, 0 or 1
+     * @return the immutable history intended for this player
+     */
+    public HandHistory forPlayer(int seat) {
+        Checks.seat(seat);
+        return new HandHistory(header, events.stream()
+                .filter(event -> !(event instanceof HandEvent.DealHole hole) || hole.seat() == seat)
+                .toList());
+    }
+
+    /**
      * Immutable header; the JSON module will map these values to schema-1 fields.
      * @param schemaVersion supported schema version, currently 1
      * @param config blinds
