@@ -1,16 +1,22 @@
 package io.pokerbaby.demo;
 
-import java.util.ArrayList;
 import java.util.List;
 
-import io.pokerbaby.engine.Card;
+import io.pokerbaby.engine.Action;
 import io.pokerbaby.engine.Deck;
 import io.pokerbaby.engine.GameConfig;
-import io.pokerbaby.engine.HandMeta;
 import io.pokerbaby.engine.HandCategory;
-import io.pokerbaby.engine.HandEvaluator;
+import io.pokerbaby.engine.HandEngine;
+import io.pokerbaby.engine.HandEvent;
+import io.pokerbaby.engine.HandMeta;
 import io.pokerbaby.engine.HandRank;
+import io.pokerbaby.engine.HandResult;
+import io.pokerbaby.engine.HandState;
+import io.pokerbaby.engine.LegalActions;
+import io.pokerbaby.engine.LegalActions.BetRange;
+import io.pokerbaby.engine.PlayerView;
 import io.pokerbaby.engine.SeatChips;
+import io.pokerbaby.engine.Street;
 
 /** Entry point for the poker engine demonstration. */
 public final class PokerBabyDemo {
@@ -18,7 +24,7 @@ public final class PokerBabyDemo {
     }
 
     /**
-     * Deals two hands and a board, then evaluates and compares their best five cards.
+     * Plays one complete hand with a fixed illustrative betting policy.
      *
      * @param args optional single numeric shuffle seed; defaults to 42
      */
@@ -31,48 +37,78 @@ public final class PokerBabyDemo {
         SeatChips stacks = SeatChips.of(SeatChips.DEFAULT_STACK, SeatChips.DEFAULT_STACK);
         HandMeta meta = new HandMeta("demo-h1", List.of("human", "bot"));
         Deck original = Deck.shuffled(seed);
-        Deck current = original;
-        List<List<Card>> hands = List.of(new ArrayList<>(), new ArrayList<>());
-        int buttonSeat = 0;
-        for (int round = 0; round < 2; round++) {
-            for (int offset = 0; offset < 2; offset++) {
-                int seat = (buttonSeat + 1 + offset) % 2;
-                Deck.Draw draw = current.draw();
-                hands.get(seat).add(draw.card());
-                current = draw.deck();
+        HandState state = HandEngine.start(config, meta, stacks, 0, original);
+        System.out.println("PokerBaby: этап 4 — полная раздача.");
+        System.out.println("Seed: " + seed);
+        System.out.println("Блайнды: " + config.smallBlind() + "/" + config.bigBlind());
+        System.out.println("Стартовые стеки: " + stacks);
+        System.out.println("Баттон: " + meta.playerId(state.buttonSeat()));
+        printEvents(meta, Street.PREFLOP, state.history().events());
+        while (!state.isComplete()) {
+            PlayerView view = state.viewFor(state.actingSeat().orElseThrow());
+            Action action = choose(view);
+            HandState next = HandEngine.apply(state, view.seat(), action);
+            printEvents(meta, state.street(),
+                    next.history().events().subList(state.history().events().size(), next.history().events().size()));
+            state = next;
+        }
+        HandResult result = state.result().orElseThrow();
+        System.out.println("Общие карты: " + state.board());
+        for (int seat = 0; seat < result.ranks().size(); seat++) {
+            HandRank rank = result.ranks().get(seat);
+            System.out.println("Комбинация " + meta.playerId(seat) + ": "
+                    + categoryName(rank.category()) + " — " + rank.cards());
+        }
+        System.out.println(result.isTie() ? "Результат: ничья."
+                : "Победитель: " + meta.playerId(result.winnerSeat().orElseThrow()) + ".");
+        System.out.println("Сыгранный банк: " + result.pot());
+        System.out.println("Выплаты: " + result.payouts());
+        System.out.println("Итоговые стеки: " + result.finalStacks());
+        System.out.println("Банк после выплаты: " + state.pot());
+        System.out.println("Остаток колоды: " + state.deck().remaining());
+        System.out.println("Исходная колода не изменилась: " + original.remaining() + " карты.");
+    }
+
+    // The decision function has access only to one player's view.
+    // This fixed policy illustrates each street; random bot matches are a later stage.
+    private static Action choose(PlayerView view) {
+        LegalActions legal = view.legalActions();
+        if (view.street() == Street.PREFLOP && view.seat() == view.buttonSeat() && legal.canRaise()) {
+            return Action.raiseTo(clamp(250, legal.raise().orElseThrow()));
+        }
+        if (view.seat() != view.buttonSeat() && legal.canBet()) {
+            if (view.street() == Street.FLOP) {
+                return Action.betTo(clamp(300, legal.bet().orElseThrow()));
+            }
+            if (view.street() == Street.RIVER) {
+                return Action.betTo(clamp(500, legal.bet().orElseThrow()));
             }
         }
+        return legal.canCheck() ? Action.check() : Action.call();
+    }
 
-        List<Card> board = new ArrayList<>(5);
-        for (int index = 0; index < 5; index++) {
-            Deck.Draw draw = current.draw();
-            board.add(draw.card());
-            current = draw.deck();
-        }
+    private static long clamp(long amount, BetRange range) {
+        return Math.max(range.minTo(), Math.min(amount, range.maxTo()));
+    }
 
-        System.out.println("PokerBaby: этап 3 — оценка комбинаций.");
-        System.out.println("Seed: " + seed);
-        System.out.println("Конфигурация блайндов: " + config.smallBlind() + "/" + config.bigBlind());
-        System.out.println("Стартовые стеки: " + stacks);
-        for (int seat = 0; seat < 2; seat++) {
-            System.out.println("Карты " + meta.playerId(seat) + ": " + hands.get(seat));
+    private static void printEvents(HandMeta meta, Street actingStreet, List<HandEvent> events) {
+        for (HandEvent event : events) {
+            switch (event) {
+                case HandEvent.PostBlind blind -> System.out.println(
+                        "Блайнд " + meta.playerId(blind.seat()) + ": " + blind.amount());
+                case HandEvent.DealHole hole -> System.out.println("Закрытые карты сданы " + meta.playerId(hole.seat()));
+                case HandEvent.ActionTaken taken -> System.out.println(actingStreet + " — "
+                        + meta.playerId(taken.seat()) + ": " + taken.action().type()
+                        + (taken.action().to().isPresent() ? " до " + taken.action().to().orElseThrow() : ""));
+                case HandEvent.DealBoard board -> System.out.println(board.street() + ": " + board.cards());
+                case HandEvent.ReturnUncalled returned -> System.out.println("Возврат "
+                        + meta.playerId(returned.seat()) + ": " + returned.amount());
+                case HandEvent.Showdown shown -> System.out.println("Вскрытие "
+                        + meta.playerId(shown.seat()) + ": " + shown.cards());
+                case HandEvent.Payout payout -> System.out.println("Выплата "
+                        + meta.playerId(payout.seat()) + ": " + payout.amount());
+            }
         }
-        System.out.println("Общие карты: " + board);
-        List<HandRank> results = new ArrayList<>(2);
-        for (int seat = 0; seat < 2; seat++) {
-            List<Card> available = new ArrayList<>(hands.get(seat));
-            available.addAll(board);
-            HandRank result = HandEvaluator.evaluate(available);
-            results.add(result);
-            System.out.println("Комбинация " + meta.playerId(seat) + ": "
-                    + categoryName(result.category()) + " — " + result.cards());
-        }
-        int comparison = results.get(0).compareTo(results.get(1));
-        System.out.println(comparison == 0 ? "Результат сравнения: ничья."
-                : "Сильнее рука " + meta.playerId(comparison > 0 ? 0 : 1) + ".");
-        System.out.println("Остаток новой колоды: " + current.remaining());
-        System.out.println("Исходная колода не изменилась: " + original.remaining() + " карты.");
-        System.out.println("Торговля и выплата банка будут реализованы на следующих этапах.");
     }
 
     private static String categoryName(HandCategory category) {

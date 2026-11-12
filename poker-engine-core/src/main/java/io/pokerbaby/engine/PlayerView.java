@@ -55,37 +55,58 @@ public record PlayerView(int seat, Street street, List<Card> board, List<Card> h
         Objects.requireNonNull(result, "result");
     }
 
-    /** @return original hand metadata */
+    /**
+     * Reads the hand metadata.
+     * @return original hand metadata
+     */
     public HandMeta meta() {
         return history.header().meta();
     }
 
-    /** @return configured blinds */
+    /**
+     * Reads the blind configuration.
+     * @return configured blinds
+     */
     public GameConfig config() {
         return history.header().config();
     }
 
-    /** @return dealer and small-blind seat */
+    /**
+     * Reads the button position.
+     * @return dealer and small-blind seat
+     */
     public int buttonSeat() {
         return history.header().buttonSeat();
     }
 
-    /** @return currently committed pot, zero after settlement */
+    /**
+     * Computes the currently committed pot.
+     * @return currently committed pot, zero after settlement
+     */
     public long pot() {
         return contributions.total();
     }
 
-    /** @return whether the viewer must act */
+    /**
+     * Reports whether a decision is required from this player.
+     * @return whether the viewer must act
+     */
     public boolean isMyTurn() {
         return actingSeat.equals(OptionalInt.of(seat));
     }
 
-    /** @return whether payouts are complete */
+    /**
+     * Reports completion after settlement.
+     * @return whether payouts are complete
+     */
     public boolean isComplete() {
         return result.isPresent();
     }
 
-    /** @return opponent's cards only if a showdown event has revealed them */
+    /**
+     * Finds publicly revealed opponent cards.
+     * @return opponent's cards only if a showdown event has revealed them
+     */
     public Optional<List<Card>> opponentCards() {
         return history.events().stream()
                 .filter(event -> event instanceof HandEvent.Showdown showdown && showdown.seat() != seat)

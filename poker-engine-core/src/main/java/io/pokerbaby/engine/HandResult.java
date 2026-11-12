@@ -62,17 +62,26 @@ public record HandResult(HandHistory.Header header, OptionalInt winnerSeat,
         }
     }
 
-    /** @return whether the hand ended in a tie */
+    /**
+     * Reports a tied outcome.
+     * @return whether the hand ended in a tie
+     */
     public boolean isTie() {
         return winnerSeat.isEmpty();
     }
 
-    /** @return whether both hands were revealed and evaluated */
+    /**
+     * Reports how the hand ended.
+     * @return whether both hands were revealed and evaluated
+     */
     public boolean wasShowdown() {
         return !ranks.isEmpty();
     }
 
-    /** @return the matched pot before payout, excluding refunds */
+    /**
+     * Computes the contested pot before payout.
+     * @return the matched pot before payout, excluding refunds
+     */
     public long pot() {
         return contributions.total();
     }

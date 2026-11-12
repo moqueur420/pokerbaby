@@ -97,27 +97,42 @@ public record HandState(Street street, List<Card> board, List<List<Card>> holeCa
         }
     }
 
-    /** @return blind configuration from the original header */
+    /**
+     * Reads the blind configuration.
+     * @return blind configuration from the original header
+     */
     public GameConfig config() {
         return history.header().config();
     }
 
-    /** @return externally supplied hand metadata */
+    /**
+     * Reads the hand metadata.
+     * @return externally supplied hand metadata
+     */
     public HandMeta meta() {
         return history.header().meta();
     }
 
-    /** @return dealer and small-blind seat */
+    /**
+     * Reads the button position.
+     * @return dealer and small-blind seat
+     */
     public int buttonSeat() {
         return history.header().buttonSeat();
     }
 
-    /** @return sum of contributions, without double-counting street bets */
+    /**
+     * Computes the currently committed pot.
+     * @return sum of contributions, without double-counting street bets
+     */
     public long pot() {
         return contributions.total();
     }
 
-    /** @return whether all payouts have been applied */
+    /**
+     * Reports completion after settlement.
+     * @return whether all payouts have been applied
+     */
     public boolean isComplete() {
         return result.isPresent();
     }

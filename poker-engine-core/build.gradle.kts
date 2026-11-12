@@ -21,6 +21,16 @@ tasks.register<JavaExec>("benchmarkEvaluator") {
     jvmArgs("-Xms512m", "-Xmx512m", "-XX:ActiveProcessorCount=1", "-XX:+UseSerialGC")
 }
 
+tasks.register<JavaExec>("benchmarkHands") {
+    group = "verification"
+    description = "Measures complete hands with history and player views outside tests and coverage"
+    dependsOn(benchmark.classesTaskName)
+    classpath = benchmark.runtimeClasspath
+    mainClass.set("io.pokerbaby.benchmark.HandEngineBenchmark")
+    javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
+    jvmArgs("-Xms512m", "-Xmx512m", "-XX:ActiveProcessorCount=1", "-XX:+UseSerialGC")
+}
+
 val productionClasses = sourceSets.main.get().output.classesDirs.asFileTree.matching {
     include("**/*.class")
     exclude("**/package-info.class")

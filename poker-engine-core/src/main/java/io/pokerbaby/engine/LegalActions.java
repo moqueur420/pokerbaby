@@ -34,27 +34,42 @@ public record LegalActions(boolean canFold, boolean canCheck, long callAmount,
         }
     }
 
-    /** @return no available actions */
+    /**
+     * Creates an empty action set.
+     * @return no available actions
+     */
     public static LegalActions none() {
         return new LegalActions(false, false, 0, Optional.empty(), Optional.empty());
     }
 
-    /** @return whether calling is available */
+    /**
+     * Reports call availability.
+     * @return whether calling is available
+     */
     public boolean canCall() {
         return callAmount > 0;
     }
 
-    /** @return whether an opening bet is available */
+    /**
+     * Reports opening-bet availability.
+     * @return whether an opening bet is available
+     */
     public boolean canBet() {
         return bet.isPresent();
     }
 
-    /** @return whether raising is available */
+    /**
+     * Reports raise availability.
+     * @return whether raising is available
+     */
     public boolean canRaise() {
         return raise.isPresent();
     }
 
-    /** @return the immutable set of available action types */
+    /**
+     * Collects available action types.
+     * @return the immutable set of available action types
+     */
     public Set<ActionType> types() {
         EnumSet<ActionType> types = EnumSet.noneOf(ActionType.class);
         if (canFold) {
