@@ -20,6 +20,57 @@ function element(tag, className, text) {
     return node;
 }
 
+function chipStacks(amount) {
+    const stacks = element("span", "chip-stacks");
+    stacks.setAttribute("aria-hidden", "true");
+    if (!Number.isSafeInteger(amount) || amount <= 0) return stacks;
+    let remaining = amount;
+    for (const denomination of [5000, 1000, 500, 100, 25, 5, 1]) {
+        const count = Math.floor(remaining / denomination);
+        remaining %= denomination;
+        if (!count) continue;
+        const column = element("span", `chip-column chip-${denomination}`);
+        // Bound the illustration's size; the adjacent amount always shows the exact total.
+        for (let index = 0; index < Math.min(count, 5); index++) {
+            column.append(element("span", "poker-chip"));
+        }
+        stacks.append(column);
+        if (stacks.children.length === 3) break;
+    }
+    return stacks;
+}
+
+function renderSeatNote(id, amount, text, label) {
+    const note = $(id);
+    const showChips = amount > 0 && !state.complete;
+    note.classList.toggle("has-wager", showChips);
+    if (showChips) {
+        note.replaceChildren(chipStacks(amount), element("strong", "bet-amount", chips(amount)));
+        note.setAttribute("aria-label", `${label}: ${chips(amount)} фишек`);
+    } else {
+        note.textContent = text;
+        note.removeAttribute("aria-label");
+    }
+}
+
+function historyAvatar(isHuman) {
+    const avatar = element("span", `event-avatar ${isHuman ? "you" : "bot"}`);
+    avatar.setAttribute("aria-hidden", "true");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("focusable", "false");
+    const shapes = isHuman
+        ? [["circle", { cx: 12, cy: 8, r: 3.5 }], ["path", { d: "M5 21v-2a7 7 0 0 1 14 0v2" }]]
+        : [["rect", { x: 5, y: 6, width: 14, height: 14, rx: 3 }], ["path", { d: "M12 3v3M2 11v4m20-4v4M9 16h6M9 10v1m6-1v1" }]];
+    for (const [tag, attributes] of shapes) {
+        const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [key, value] of Object.entries(attributes)) shape.setAttribute(key, String(value));
+        svg.append(shape);
+    }
+    avatar.append(svg);
+    return avatar;
+}
+
 function card(code, hidden = false) {
     const node = element("div", "card");
     if (hidden) {
@@ -65,6 +116,7 @@ function updateRaiseButton() {
     labelButton("raise-button", type, range ? `До ${chips(wagerValue() || range.min)}` : "Недоступен");
     $("raise-button").disabled = busy || !validWager();
     $("wager").setAttribute("aria-invalid", String(Boolean(range && !validWager())));
+    $("wager-chips").replaceChildren(...chipStacks(wagerValue()).children);
 }
 
 function lockControls() {
@@ -101,13 +153,14 @@ function render() {
         renderedBoard = boardKey;
     }
     $("pot").textContent = chips(s.complete ? s.result.pot : s.pot);
+    $("pot-chips").replaceChildren(...chipStacks(s.complete ? s.result.pot : s.pot).children);
     $("pot-label").textContent = s.complete ? "РАЗЫГРАННЫЙ БАНК" : "ОБЩИЙ БАНК";
     $("street").textContent = streets[s.street];
     $("hand-label").textContent = `РАЗДАЧА № ${s.handNumber}`;
     $("human-seat").classList.toggle("complete", s.complete);
     $("human-tag").textContent = s.complete ? "ИГРОК" : "ВАШ ХОД";
-    $("human-note").textContent = s.complete ? (s.result.categories[0] ? categories[s.result.categories[0]] : "Раздача завершена") : (s.streetBets[0] ? `На столе: ${chips(s.streetBets[0])}` : "Ваш ход");
-    $("bot-note").textContent = s.complete ? (s.result.categories[1] ? categories[s.result.categories[1]] : "Карты не раскрыты") : (s.streetBets[1] ? `На столе: ${chips(s.streetBets[1])}` : "Ждёт вашего решения");
+    renderSeatNote("human-note", s.streetBets[0], s.complete ? (s.result.categories[0] ? categories[s.result.categories[0]] : "Раздача завершена") : "Ваш ход", "Ваша ставка");
+    renderSeatNote("bot-note", s.streetBets[1], s.complete ? (s.result.categories[1] ? categories[s.result.categories[1]] : "Карты не раскрыты") : "Ждёт вашего решения", "Ставка бота");
     $("status").textContent = s.complete ? (s.matchOver ? "Матч завершён" : "Хорошая раздача. Продолжим?") : "Ваш ход";
     $("decision-hint").textContent = s.complete ? "Игра на условные фишки" : (s.legal.callAmount ? `Для колла: ${chips(s.legal.callAmount)}` : "Можно сделать чек");
     $("action-controls").hidden = s.complete;
@@ -165,7 +218,7 @@ function renderHistory() {
         if (event.type === "deal_hole") continue;
         const row = element("li", "history-row");
         const isHuman = event.seat === 0;
-        const avatar = element("span", `event-avatar${isHuman ? " you" : ""}`, isHuman ? "В" : "Б");
+        const avatar = historyAvatar(isHuman);
         const content = element("div");
         content.append(element("div", "event-name", isHuman ? "Вы" : "Бот"));
         let description = "";

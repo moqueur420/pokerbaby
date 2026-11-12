@@ -41,7 +41,7 @@ class PokerBabyWebTest {
             assertFalse(response.body().isBlank());
             assertTrue(response.headers().firstValue("Content-Security-Policy").isPresent());
         }
-        assertTrue(get("/").body().contains("Карты на стол."));
+        assertEquals("text/html; charset=utf-8", get("/").headers().firstValue("Content-Type").orElseThrow());
         assertEquals(404, get("/build.gradle.kts").statusCode());
     }
 
