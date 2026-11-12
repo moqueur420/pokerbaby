@@ -23,6 +23,18 @@ final class Checks {
         return value;
     }
 
+    static List<String> playerIds(List<String> values) {
+        List<String> copy = List.copyOf(values);
+        if (copy.size() != 2) {
+            throw new IllegalArgumentException("Exactly two player identifiers are required");
+        }
+        copy.forEach(id -> identifier(id, "playerId"));
+        if (copy.get(0).equals(copy.get(1))) {
+            throw new IllegalArgumentException("Player identifiers must be distinct");
+        }
+        return copy;
+    }
+
     static long positiveChips(long amount) {
         if (amount <= 0 || amount > SeatChips.MAX_TOTAL) {
             throw new IllegalArgumentException("Chip amount must be between 1 and " + SeatChips.MAX_TOTAL);

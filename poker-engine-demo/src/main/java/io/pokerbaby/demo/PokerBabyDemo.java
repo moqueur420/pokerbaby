@@ -1,6 +1,7 @@
 package io.pokerbaby.demo;
 
 import java.util.List;
+import java.util.Random;
 
 import io.pokerbaby.engine.Action;
 import io.pokerbaby.engine.Deck;
@@ -14,6 +15,7 @@ import io.pokerbaby.engine.HandResult;
 import io.pokerbaby.engine.HandState;
 import io.pokerbaby.engine.LegalActions;
 import io.pokerbaby.engine.LegalActions.BetRange;
+import io.pokerbaby.engine.MatchState;
 import io.pokerbaby.engine.PlayerView;
 import io.pokerbaby.engine.SeatChips;
 import io.pokerbaby.engine.Street;
@@ -24,24 +26,51 @@ public final class PokerBabyDemo {
     }
 
     /**
-     * Plays one complete hand with a fixed illustrative betting policy.
+     * Plays consecutive hands with a fixed illustrative betting policy.
      *
-     * @param args optional single numeric shuffle seed; defaults to 42
+     * @param args optional numeric seed and positive hand limit; defaults to 42 and 2
      */
     public static void main(String[] args) {
-        if (args.length > 1) {
-            throw new IllegalArgumentException("Usage: PokerBabyDemo [seed]");
+        if (args.length > 2) {
+            throw new IllegalArgumentException("Usage: PokerBabyDemo [seed] [maxHands]");
         }
         long seed = args.length == 0 ? 42 : Long.parseLong(args[0]);
+        int maxHands = args.length < 2 ? 2 : Integer.parseInt(args[1]);
+        if (maxHands < 1) {
+            throw new IllegalArgumentException("The hand limit must be positive");
+        }
         GameConfig config = GameConfig.DEFAULT;
         SeatChips stacks = SeatChips.of(SeatChips.DEFAULT_STACK, SeatChips.DEFAULT_STACK);
-        HandMeta meta = new HandMeta("demo-h1", List.of("human", "bot"));
-        Deck original = Deck.shuffled(seed);
-        HandState state = HandEngine.start(config, meta, stacks, 0, original);
-        System.out.println("PokerBaby: этап 4 — полная раздача.");
+        MatchState match = MatchState.start("demo", List.of("human", "bot"), config, stacks, 0);
+        Random random = new Random(seed);
+        System.out.println("PokerBaby: этап 5 — матч.");
         System.out.println("Seed: " + seed);
         System.out.println("Блайнды: " + config.smallBlind() + "/" + config.bigBlind());
-        System.out.println("Стартовые стеки: " + stacks);
+        System.out.println("Стартовые стеки матча: " + stacks);
+        System.out.println("Лимит раздач: " + maxHands);
+        while (!match.isOver() && match.completedHands() < maxHands) {
+            Deck original = Deck.shuffled(random);
+            HandState hand = match.nextHand(original);
+            System.out.println();
+            System.out.println("Раздача " + match.handNumber() + ": " + hand.meta().handId());
+            match = match.afterHand(playHand(hand, original));
+        }
+        System.out.println();
+        System.out.println("Сыграно раздач: " + match.completedHands());
+        System.out.println("Итоговые стеки матча: " + match.stacks());
+        if (match.isOver()) {
+            System.out.println("Матч завершён. Победитель: "
+                    + match.playerIds().get(match.winnerSeat().orElseThrow()) + ".");
+        } else {
+            System.out.println("Достигнут лимит показа; матч продолжается.");
+            System.out.println("Следующая раздача: " + match.nextHandMeta().handId()
+                    + ", баттон: " + match.playerIds().get(match.buttonSeat()));
+        }
+    }
+
+    private static HandResult playHand(HandState state, Deck original) {
+        HandMeta meta = state.meta();
+        System.out.println("Стартовые стеки раздачи: " + state.history().header().startingStacks());
         System.out.println("Баттон: " + meta.playerId(state.buttonSeat()));
         printEvents(meta, Street.PREFLOP, state.history().events());
         while (!state.isComplete()) {
@@ -67,10 +96,11 @@ public final class PokerBabyDemo {
         System.out.println("Банк после выплаты: " + state.pot());
         System.out.println("Остаток колоды: " + state.deck().remaining());
         System.out.println("Исходная колода не изменилась: " + original.remaining() + " карты.");
+        return result;
     }
 
     // The decision function has access only to one player's view.
-    // This fixed policy illustrates each street; random bot matches are a later stage.
+    // This fixed policy illustrates each street; random bot policies are a later stage.
     private static Action choose(PlayerView view) {
         LegalActions legal = view.legalActions();
         if (view.street() == Street.PREFLOP && view.seat() == view.buttonSeat() && legal.canRaise()) {

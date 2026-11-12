@@ -20,15 +20,8 @@ public record HandMeta(String handId, List<String> playerIds, Optional<Instant> 
      */
     public HandMeta {
         Checks.identifier(handId, "handId");
-        playerIds = List.copyOf(playerIds);
+        playerIds = Checks.playerIds(playerIds);
         Objects.requireNonNull(startedAt, "startedAt");
-        if (playerIds.size() != 2) {
-            throw new IllegalArgumentException("Exactly two player identifiers are required");
-        }
-        playerIds.forEach(id -> Checks.identifier(id, "playerId"));
-        if (playerIds.get(0).equals(playerIds.get(1))) {
-            throw new IllegalArgumentException("Player identifiers must be distinct");
-        }
     }
 
     /**
