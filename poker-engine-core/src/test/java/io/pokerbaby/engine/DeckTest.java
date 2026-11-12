@@ -42,29 +42,32 @@ class DeckTest {
     }
 
     @Test
-    @DisplayName("К-3, Н-10: Fisher-Yates uses the caller's bounded random source")
+    @DisplayName("К-3, К-6, К-7, Н-10: Fisher-Yates consumes the caller's raw random source")
     void externalRandomSource() {
-        List<Integer> bounds = new ArrayList<>();
+        List<Integer> samples = new ArrayList<>();
         RandomGenerator random = new RandomGenerator() {
             @Override
             public long nextLong() {
-                throw new AssertionError("Only nextInt(bound) should be used");
+                throw new AssertionError("Only raw nextInt() should be used");
             }
 
             @Override
             public int nextInt(int bound) {
-                bounds.add(bound);
+                throw new AssertionError("The deck must perform rejection sampling itself");
+            }
+
+            @Override
+            public int nextInt() {
+                samples.add(0);
                 return 0;
             }
         };
         Deck deck = Deck.shuffled(random);
-        assertEquals(51, bounds.size());
-        for (int index = 0; index < bounds.size(); index++) {
-            assertEquals(52 - index, bounds.get(index));
-        }
+        assertEquals(51, samples.size());
         assertEquals(52, new HashSet<>(deck.cards()).size());
-        assertEquals(Card.parse("3c"), deck.cards().getFirst());
-        assertEquals(Card.parse("2c"), deck.cards().getLast());
+        List<Card> rotated = new ArrayList<>(Deck.standard().cards().subList(1, 52));
+        rotated.add(Card.parse("2c"));
+        assertEquals(rotated, deck.cards());
         assertThrows(NullPointerException.class, () -> Deck.shuffled(null));
     }
 

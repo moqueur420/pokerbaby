@@ -13,6 +13,7 @@ import java.util.random.RandomGenerator;
  * A deck may be partial or empty; starting a hand requires nine remaining cards.
  */
 public final class Deck {
+    private static final long RANDOM_RANGE = 1L << 31;
     private final List<Card> cards;
     private final int position;
 
@@ -60,18 +61,57 @@ public final class Deck {
     }
 
     /**
-     * Shuffles the canonical deck, swapping indices 51 down to 1 with
-     * {@code random.nextInt(index + 1)}. The source is consumed but never retained.
+     * Shuffles the canonical deck using reverse Fisher-Yates and unbiased indices.
+     * Uniform raw integers are read through {@link RandomGenerator#nextInt()}.
+     * Rejection sampling is performed by the deck; the source is never retained.
      * @param random caller-owned source; a secure source can be supplied by a server
      * @return the shuffled deck
      */
     public static Deck shuffled(RandomGenerator random) {
+        return shuffled(standard().cards, random);
+    }
+
+    /**
+     * Shuffles a supplied full or partial deck using an explicit seed.
+     * @param cards distinct non-null cards in their initial order
+     * @param seed deterministic seed for {@link Random}
+     * @return a shuffled deck positioned before its first card
+     * @throws IllegalArgumentException if a card is repeated
+     */
+    public static Deck shuffled(List<Card> cards, long seed) {
+        return shuffled(cards, new Random(seed));
+    }
+
+    /**
+     * Shuffles a supplied full or partial deck using reverse Fisher-Yates.
+     * For each position, an unbiased index is drawn from zero through that position.
+     * Inputs are copied and the source is consumed but not retained.
+     * @param cards distinct non-null cards, possibly empty
+     * @param random caller-owned source of uniform raw integers
+     * @return a shuffled deck positioned before its first card
+     * @throws IllegalArgumentException if a card is repeated
+     */
+    public static Deck shuffled(List<Card> cards, RandomGenerator random) {
         Objects.requireNonNull(random, "random");
-        List<Card> cards = new ArrayList<>(standard().cards);
-        for (int index = cards.size() - 1; index > 0; index--) {
-            Collections.swap(cards, index, random.nextInt(index + 1));
+        List<Card> shuffled = new ArrayList<>(ordered(cards).cards);
+        for (int index = shuffled.size() - 1; index > 0; index--) {
+            Collections.swap(shuffled, index, randomIndex(random, index + 1));
         }
-        return new Deck(List.copyOf(cards), 0);
+        return new Deck(List.copyOf(shuffled), 0);
+    }
+
+    private static int randomIndex(RandomGenerator random, int bound) {
+        int sample = random.nextInt() >>> 1;
+        if ((bound & (bound - 1)) == 0) {
+            // Equal-size buckets cover the whole range. Using high bits also
+            // preserves the existing java.util.Random seeded shuffle vectors.
+            return (int) ((bound * (long) sample) / RANDOM_RANGE);
+        }
+        long limit = RANDOM_RANGE - RANDOM_RANGE % bound;
+        while (sample >= limit) {
+            sample = random.nextInt() >>> 1;
+        }
+        return sample % bound;
     }
 
     /**
