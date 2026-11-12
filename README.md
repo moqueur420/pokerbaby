@@ -48,6 +48,19 @@ Linux / macOS:
 
 Текущая демонстрационная программа выводит статус проекта. Розыгрыш матча появится после реализации движка.
 
+## Кириллица в терминале Windows
+
+Исходники и вывод Java/Gradle используют UTF-8. Если вместо русских букв видны символы рамок или искажённый текст, настройте ту же кодировку в терминале. В текущем терминале PowerShell выполните:
+
+```powershell
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Console]::OutputEncoding
+.\gradlew.bat :poker-engine-demo:run
+```
+
+В VS Code можно сохранить эти команды инициализации в пользовательском профиле PowerShell через `terminal.integrated.profiles.windows`. После изменения профиля закройте старый терминал и создайте новый. Настройки `.vscode` локальные и не входят в Git.
+
 ## Структура проекта
 
 | Модуль | Назначение |
