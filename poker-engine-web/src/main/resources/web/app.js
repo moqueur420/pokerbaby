@@ -19,6 +19,17 @@ function tableState() {
     return replayData ? replayData.steps[replayIndex].state : state;
 }
 
+function nextBettingLevel(level, event) {
+    if (event.type === "deal_board") return 0;
+    if (event.type !== "action") return level;
+    if (event.action === "BET") return 1;
+    return event.action === "RAISE" ? level + 1 : level;
+}
+
+function actionName(type, level) {
+    return type === "RAISE" && level === 3 ? "3-бет" : actionNames[type];
+}
+
 function element(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -118,8 +129,12 @@ function updateWager(value) {
 }
 
 function updateRaiseButton() {
-    const type = state?.legal.bet.min ? "Бет" : "Рейз";
-    labelButton("raise-button", type, range ? `До ${chips(wagerValue() || range.min)}` : "Недоступен");
+    const view = tableState();
+    const type = view?.legal.bet.min ? "BET" : "RAISE";
+    // The big blind is the first wager preflop; each new board street starts at zero.
+    const title = view?.legal.raise.min
+        ? actionName(type, view.history.reduce(nextBettingLevel, 1) + 1) : actionNames[type];
+    labelButton("raise-button", title, range ? `До ${chips(wagerValue() || range.min)}` : "Недоступен");
     $("raise-button").disabled = busy || !validWager();
     $("wager").setAttribute("aria-invalid", String(Boolean(range && !validWager())));
     $("wager-chips").replaceChildren(...chipStacks(wagerValue()).children);
@@ -213,13 +228,13 @@ function renderHandSelect() {
     select.dataset.hands = key;
 }
 
-function replayEventText(event) {
+function replayEventText(event, history) {
     const player = event.seat === 0 ? "Вы" : "Бот";
     switch (event.type) {
         case "post_blind": return `${player}: блайнд ${chips(event.amount)}`;
         case "deal_hole": return "Сданы ваши закрытые карты";
         case "deal_hidden": return "Сданы закрытые карты бота";
-        case "action": return `${player}: ${actionNames[event.action]}${event.to ? ` до ${chips(event.to)}` : ""}`;
+        case "action": return `${player}: ${actionName(event.action, history.reduce(nextBettingLevel, 1))}${event.to ? ` до ${chips(event.to)}` : ""}`;
         case "deal_board": return `Сданы общие карты · ${streets[event.street]}`;
         case "return_uncalled": return `${player}: возврат ${chips(event.amount)}`;
         case "showdown": return `${player}: ${categories[event.category]}`;
@@ -234,7 +249,7 @@ function renderReplay() {
     $("replay-slider").max = String(replayData.steps.length - 1);
     $("replay-slider").value = String(replayIndex);
     $("replay-progress").textContent = `${replayIndex} / ${replayData.steps.length - 1}`;
-    $("replay-event").textContent = replayEventText(step.event);
+    $("replay-event").textContent = replayEventText(step.event, step.state.history);
     $("status").textContent = "Просмотр истории";
     $("decision-hint").textContent = step.state.decisionPoint ? (step.state.actingSeat === 0 ? "Точка вашего решения" : "Точка решения бота") : "Событие раздачи";
     $("human-tag").textContent = step.canResume ? "ВАШЕ РЕШЕНИЕ" : "ИГРОК";
@@ -277,7 +292,9 @@ function renderHistory(view) {
     const newHand = list.dataset.hand !== String(view.handNumber);
     const fragment = document.createDocumentFragment();
     fragment.append(element("li", "history-street", "Префлоп"));
+    let level = 1;
     for (const event of view.history) {
+        level = nextBettingLevel(level, event);
         if (event.type === "deal_board") {
             fragment.append(element("li", "history-street", streets[event.street]));
             const row = element("li", "history-row");
@@ -295,7 +312,7 @@ function renderHistory(view) {
         let amount = "";
         switch (event.type) {
             case "post_blind": description = event.seat === view.buttonSeat ? "Малый блайнд" : "Большой блайнд"; amount = chips(event.amount); break;
-            case "action": description = actionNames[event.action]; amount = event.to ? `до ${chips(event.to)}` : ""; break;
+            case "action": description = actionName(event.action, level); amount = event.to ? `до ${chips(event.to)}` : ""; break;
             case "showdown": description = `Вскрытие · ${categories[event.category]}`; break;
             case "return_uncalled": description = "Возврат ставки"; amount = `+${chips(event.amount)}`; break;
             case "payout": description = "Забирает банк"; amount = `+${chips(event.amount)}`; break;
