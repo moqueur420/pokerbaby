@@ -32,6 +32,7 @@ public final class HandEvaluatorBenchmark {
         BenchmarkSupport.environment();
         System.out.println("Corpus: " + CORPUS_SIZE + " seven-card hands; seed=20261113; shuffle excluded");
         BenchmarkSupport.measure("HandEvaluator.evaluate(7 cards)", ITERATIONS, () -> run(corpus));
+        System.out.println("Last evaluated hand: " + lastResult);
         HandValuesBenchmark.measure(corpus);
     }
 
