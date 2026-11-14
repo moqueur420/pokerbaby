@@ -25,6 +25,7 @@ final class ValueBenchmark {
             }
             return checksum;
         });
+        System.out.println("Last chip amounts: " + lastChips);
         BenchmarkSupport.measure("Deck.shuffled(seed)", 200_000, () -> {
             long checksum = 0;
             for (int index = 0; index < 200_000; index++) {
@@ -34,5 +35,7 @@ final class ValueBenchmark {
             }
             return checksum;
         });
+        System.out.println("Last shuffled deck: remaining=" + lastDeck.remaining()
+                + "; first=" + lastDeck.cards().getFirst());
     }
 }

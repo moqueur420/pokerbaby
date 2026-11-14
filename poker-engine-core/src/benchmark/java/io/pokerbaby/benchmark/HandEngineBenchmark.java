@@ -48,6 +48,9 @@ public final class HandEngineBenchmark {
         System.out.println("End-to-end case includes fresh Deck.shuffled(Random), seed=20261113, in the timed loop");
         BenchmarkSupport.measure("Random hand + shuffle + PlayerView", ITERATIONS,
                 () -> randomHands(corpus, true, true));
+        // Read the published result outside the timed batches.
+        System.out.println("Last completed hand: stacks=" + lastState.stacks()
+                + "; events=" + lastState.history().events().size());
         ValueBenchmark.measure();
     }
 
