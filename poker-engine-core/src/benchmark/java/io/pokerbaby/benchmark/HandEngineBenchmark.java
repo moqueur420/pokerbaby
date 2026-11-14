@@ -2,7 +2,6 @@ package io.pokerbaby.benchmark;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Random;
 
 import io.pokerbaby.engine.Action;
@@ -11,10 +10,11 @@ import io.pokerbaby.engine.GameConfig;
 import io.pokerbaby.engine.HandEngine;
 import io.pokerbaby.engine.HandMeta;
 import io.pokerbaby.engine.HandState;
+import io.pokerbaby.engine.LegalActions;
 import io.pokerbaby.engine.PlayerView;
 import io.pokerbaby.engine.SeatChips;
 
-/** Preliminary throughput of eight decisions through showdown, including views and history. */
+/** Single-thread baseline cases for complete fixed and random hands, chip updates and shuffling. */
 public final class HandEngineBenchmark {
     private static final int CORPUS_SIZE = 4_096;
     private static final int ITERATIONS = 100_000;
@@ -23,13 +23,12 @@ public final class HandEngineBenchmark {
     private static final List<Action> ACTIONS = List.of(Action.raiseTo(250), Action.call(),
             Action.betTo(300), Action.call(), Action.check(), Action.check(), Action.betTo(500), Action.call());
     private static volatile HandState lastState;
-    private static volatile long sink;
 
     private HandEngineBenchmark() {
     }
 
     /**
-     * Runs one warmup and three measured passes on a single application thread.
+     * Runs timed warmup and three measured passes per case on one application thread.
      * @param args unused
      */
     public static void main(String[] args) {
@@ -38,28 +37,21 @@ public final class HandEngineBenchmark {
         for (int index = 0; index < CORPUS_SIZE; index++) {
             corpus.add(Deck.shuffled(random));
         }
-        System.out.println("Java: " + System.getProperty("java.runtime.version"));
-        System.out.println("VM: " + System.getProperty("java.vm.name"));
-        System.out.println("OS: " + System.getProperty("os.name") + " / " + System.getProperty("os.arch"));
-        System.out.println("Processor: " + System.getenv("PROCESSOR_IDENTIFIER"));
-        System.out.println("Active processors: " + Runtime.getRuntime().availableProcessors());
-        System.out.println("Corpus: " + CORPUS_SIZE + " decks; seed=20261113; warmup=" + ITERATIONS);
+        BenchmarkSupport.environment();
+        System.out.println("Corpus: " + CORPUS_SIZE + " decks; seed=20261113; shuffle excluded from hand cases");
         System.out.println("Each hand: 8 actions, 8 player views, full history, showdown and payouts; shuffle excluded");
-        run(corpus);
-        long totalNanos = 0;
-        for (int pass = 1; pass <= 3; pass++) {
-            long start = System.nanoTime();
-            run(corpus);
-            long nanos = System.nanoTime() - start;
-            totalNanos += nanos;
-            System.out.printf(Locale.ROOT, "Pass %d: %d hands, %.3f s, %.0f hands/s%n",
-                    pass, ITERATIONS, nanos / 1_000_000_000.0, ITERATIONS * 1_000_000_000.0 / nanos);
-        }
-        System.out.printf(Locale.ROOT, "Aggregate: %.0f hands/s; checksum=%d; last-pot=%d%n",
-                3.0 * ITERATIONS * 1_000_000_000.0 / totalNanos, sink, lastState.result().orElseThrow().pot());
+        BenchmarkSupport.measure("Fixed hand + PlayerView", ITERATIONS, () -> run(corpus));
+        System.out.println("Random hands: uniform legal action types, min/max/random wager sizes; action seed=20261114");
+        System.out.println("Blinds=50/100, stacks=10000/10000, button alternates; passive after 64 decisions");
+        BenchmarkSupport.measure("Random hand (engine)", ITERATIONS, () -> randomHands(corpus, false, false));
+        BenchmarkSupport.measure("Random hand + PlayerView", ITERATIONS, () -> randomHands(corpus, true, false));
+        System.out.println("End-to-end case includes fresh Deck.shuffled(Random), seed=20261113, in the timed loop");
+        BenchmarkSupport.measure("Random hand + shuffle + PlayerView", ITERATIONS,
+                () -> randomHands(corpus, true, true));
+        ValueBenchmark.measure();
     }
 
-    private static void run(List<Deck> corpus) {
+    private static long run(List<Deck> corpus) {
         long checksum = 0;
         for (int index = 0; index < ITERATIONS; index++) {
             HandState state = HandEngine.start(GameConfig.DEFAULT, META, STACKS,
@@ -74,6 +66,65 @@ public final class HandEngineBenchmark {
             checksum += state.stacks().get(0) + state.history().events().size();
             lastState = state;
         }
-        sink = checksum;
+        return checksum;
+    }
+
+    private static long randomHands(List<Deck> corpus, boolean playerViews, boolean shuffle) {
+        Random random = new Random(20261114);
+        Random decks = new Random(20261113);
+        long checksum = 0;
+        for (int index = 0; index < ITERATIONS; index++) {
+            HandState state = HandEngine.start(GameConfig.DEFAULT, META, STACKS,
+                    index & 1, shuffle ? Deck.shuffled(decks) : corpus.get(index & (CORPUS_SIZE - 1)));
+            int decisions = 0;
+            while (!state.isComplete()) {
+                int seat = state.actingSeat().orElseThrow();
+                LegalActions legal;
+                if (playerViews) {
+                    PlayerView view = state.viewFor(seat);
+                    legal = view.legalActions();
+                    checksum += view.pot() + view.holeCards().getFirst().rank().value()
+                            + view.history().events().size();
+                } else {
+                    legal = HandEngine.legalActions(state);
+                }
+                Action action = decisions++ < 64 ? choose(legal, random)
+                        : legal.canCheck() ? Action.check() : Action.call();
+                if (decisions > 128) {
+                    throw new IllegalStateException("Benchmark policy did not finish a hand");
+                }
+                state = HandEngine.apply(state, seat, action);
+            }
+            checksum += state.stacks().get(0) + state.history().events().size();
+            lastState = state;
+        }
+        return checksum;
+    }
+
+    private static Action choose(LegalActions legal, Random random) {
+        int count = (legal.canFold() ? 1 : 0) + (legal.canCheck() ? 1 : 0) + (legal.canCall() ? 1 : 0)
+                + (legal.canBet() ? 1 : 0) + (legal.canRaise() ? 1 : 0);
+        int choice = random.nextInt(count);
+        if (legal.canFold() && choice-- == 0) {
+            return Action.fold();
+        }
+        if (legal.canCheck() && choice-- == 0) {
+            return Action.check();
+        }
+        if (legal.canCall() && choice-- == 0) {
+            return Action.call();
+        }
+        if (legal.canBet() && choice-- == 0) {
+            return Action.betTo(wager(legal.bet().orElseThrow(), random));
+        }
+        return Action.raiseTo(wager(legal.raise().orElseThrow(), random));
+    }
+
+    private static long wager(LegalActions.BetRange range, Random random) {
+        return switch (random.nextInt(3)) {
+            case 0 -> range.minTo();
+            case 1 -> range.maxTo();
+            default -> random.nextLong(range.minTo(), range.maxTo() + 1);
+        };
     }
 }
