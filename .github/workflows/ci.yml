@@ -3,6 +3,8 @@ name: Build and test
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +16,8 @@ concurrency:
 
 jobs:
   build:
-    name: Java 21 / ${{ matrix.os }}
+    name: Fast tests / Java 21 / ${{ matrix.os }}
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -34,7 +37,7 @@ jobs:
       - name: Set up Gradle and validate Wrapper
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Build, test, and verify coverage
+      - name: Build, run fast tests, and verify coverage
         shell: bash
         run: ./gradlew build --no-daemon --stacktrace
 
@@ -42,8 +45,42 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: reports-${{ matrix.os }}
+          name: fast-reports-${{ matrix.os }}
           path: |
             **/build/reports/tests/
             **/build/reports/jacoco/
+          if-no-files-found: ignore
+
+  slow:
+    name: Slow tests / Java 21 / Ubuntu
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle and validate Wrapper
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Run slow tests
+        run: ./gradlew slowTest --no-daemon --stacktrace
+
+      - name: Upload slow test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: slow-reports-ubuntu
+          path: |
+            **/build/reports/tests/slowTest/
+            **/build/test-results/slowTest/
           if-no-files-found: ignore

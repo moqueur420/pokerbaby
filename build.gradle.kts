@@ -6,7 +6,6 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.external.javadoc.StandardJavadocDocletOptions
 import org.gradle.jvm.toolchain.JavaLanguageVersion
-import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
@@ -36,7 +35,6 @@ subprojects {
     extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
-            vendor.set(JvmVendorSpec.ADOPTIUM)
         }
         withSourcesJar()
         withJavadocJar()
@@ -86,8 +84,26 @@ subprojects {
         }
     }
 
-    tasks.named("test") {
+    tasks.named<Test>("test") {
+        useJUnitPlatform {
+            excludeTags("slow")
+        }
         finalizedBy(tasks.named("jacocoTestReport"))
+    }
+
+    val testSourceSet = extensions.getByType<SourceSetContainer>().named("test")
+    tasks.register<Test>("slowTest") {
+        group = "verification"
+        description = "Runs only the tests tagged slow, separately from the regular build"
+        dependsOn(tasks.named("testClasses"))
+        testClassesDirs = testSourceSet.get().output.classesDirs
+        classpath = testSourceSet.get().runtimeClasspath
+        useJUnitPlatform {
+            includeTags("slow")
+        }
+        // Some modules have tests but no slow-tagged cases.
+        failOnNoDiscoveredTests.set(false)
+        shouldRunAfter(tasks.named("test"))
     }
 
     tasks.named("check") {
@@ -101,6 +117,12 @@ tasks.named("check") {
 
 tasks.named("assemble") {
     dependsOn(subprojects.map { "${it.path}:assemble" })
+}
+
+tasks.register("slowTest") {
+    group = "verification"
+    description = "Runs slow-tagged tests in all modules without adding them to check or build"
+    dependsOn(subprojects.map { "${it.path}:slowTest" })
 }
 
 tasks.wrapper {
