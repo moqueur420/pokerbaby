@@ -7,6 +7,7 @@ import java.util.OptionalInt;
 import java.util.Random;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.pokerbaby.engine.LegalActions.BetRange;
@@ -16,10 +17,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HandEngineSimulationTest {
     @Test
+    @Tag("slow")
     @DisplayName("С-2—С-8, Д-1—Д-5, Р-1—Р-3: 20000 seeded hands, private decisions and independent chip ledger")
     void diversifiedHandsConserveChipsAndSettle() {
+        verifyHands(20_000);
+    }
+
+    @Test
+    @DisplayName("С-2—С-8, Д-1—Д-5, Р-1—Р-3: 1000 diversified hands and independent chip ledger in the fast suite")
+    void quickDiversifiedHandsConserveChipsAndSettle() {
+        verifyHands(1_000);
+    }
+
+    private static void verifyHands(int count) {
         Random random = new Random(20261113);
-        for (int index = 0; index < 20_000; index++) {
+        for (int index = 0; index < count; index++) {
             String context = "seed=20261113, hand=" + index;
             GameConfig config = switch (index % 4) {
                 case 0 -> GameConfig.DEFAULT;

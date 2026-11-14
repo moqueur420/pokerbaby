@@ -9,6 +9,7 @@ import java.util.OptionalInt;
 import java.util.Random;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -273,15 +274,22 @@ class MatchStateTest {
     }
 
     @Test
+    @Tag("slow")
     @DisplayName("М-1—М-3, Н-1: 100 seeded matches finish, conserve chips and repeat with identical histories")
     void playsReproducibleMatchesToCompletion() {
-        assertEquals(playMatches(20261113), playMatches(20261113));
+        assertEquals(playMatches(20261113, 100), playMatches(20261113, 100));
     }
 
-    private static List<PlayedMatch> playMatches(long seed) {
+    @Test
+    @DisplayName("М-1—М-3, Н-1: 10 reproducible matches finish and conserve chips in the fast suite")
+    void quickReproducibleMatchesToCompletion() {
+        assertEquals(playMatches(20261113, 10), playMatches(20261113, 10));
+    }
+
+    private static List<PlayedMatch> playMatches(long seed, int count) {
         Random random = new Random(seed);
         List<PlayedMatch> played = new ArrayList<>();
-        for (int index = 0; index < 100; index++) {
+        for (int index = 0; index < count; index++) {
             String context = "seed=" + seed + ", match=" + index;
             MatchState match = MatchState.start("simulation-" + index, PLAYERS, GameConfig.DEFAULT,
                     SeatChips.of(random.nextLong(1, 10_001), random.nextLong(1, 10_001)), index & 1);

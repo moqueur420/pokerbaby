@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.random.RandomGenerator;
 
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static io.pokerbaby.engine.TestCards.cards;
@@ -86,9 +87,19 @@ class ShuffleTest {
     }
 
     @Test
+    @Tag("slow")
     @DisplayName("К-6, К-7, §8.4: 2.4 million shuffles meet all 24 frequency bounds")
     void fourCardPermutationFrequencies() {
-        int trials = 2_400_000;
+        verifyPermutationFrequencies(2_400_000, 99_000, 101_000);
+    }
+
+    @Test
+    @DisplayName("К-6, К-7: 24000 seeded shuffles cover all 24 permutations in the fast suite")
+    void quickFourCardPermutationFrequencies() {
+        verifyPermutationFrequencies(24_000, 800, 1_200);
+    }
+
+    private static void verifyPermutationFrequencies(int trials, int minimumCount, int maximumCount) {
         Random random = new Random(42);
         Map<List<Card>, Integer> frequencies = new HashMap<>();
         for (int trial = 0; trial < trials; trial++) {
@@ -99,8 +110,9 @@ class ShuffleTest {
         assertEquals(trials, frequencies.values().stream().mapToInt(Integer::intValue).sum());
         for (Map.Entry<List<Card>, Integer> entry : frequencies.entrySet()) {
             int count = entry.getValue();
-            assertTrue(count >= 99_000 && count <= 101_000,
-                    () -> entry.getKey() + " occurred " + count + " times; expected 99000..101000");
+            assertTrue(count >= minimumCount && count <= maximumCount,
+                    () -> entry.getKey() + " occurred " + count + " times; expected "
+                            + minimumCount + ".." + maximumCount);
         }
         int minimum = frequencies.values().stream().mapToInt(Integer::intValue).min().orElseThrow();
         int maximum = frequencies.values().stream().mapToInt(Integer::intValue).max().orElseThrow();
